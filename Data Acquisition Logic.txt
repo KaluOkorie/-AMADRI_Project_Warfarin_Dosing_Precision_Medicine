@@ -1,0 +1,4 @@
+Authentication → Patient ID Retrieval → Strategic Sampling → Parallel API Calls → Validation → Dataset Creation
+      ↓                  ↓                   ↓                  ↓               ↓            ↓
+   OAuth2 Token    50,000 Patient IDs   4,000 Target     Genomics/Clinical/   Quality     Clean CSVs/JSONs
+                    (API & Cache)       (Adaptive)       Lifestyle Endpoints  Checks      for Downstream Use
