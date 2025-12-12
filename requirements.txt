@@ -1,0 +1,6 @@
+requests>=2.31.0      # API communication
+pandas>=2.0.0         # Data manipulation
+numpy>=1.24.0         # Numerical operations
+matplotlib>=3.7.0     # Visualizations
+seaborn>=0.12.0       # Statistical graphics
+python>=3.8
