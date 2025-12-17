@@ -12,7 +12,7 @@ import pandas as pd
 
 BASE_URL = "https://genexahealth.onrender.com/api/v1"
 USERNAME = "clinician"
-PASSWORD = "clinical123"
+PASSWORD = "XXXXXXX123" 
 
 class GenexaClient:
     def __init__(self, base_url=BASE_URL, username=USERNAME, password=PASSWORD):
