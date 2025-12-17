@@ -1,0 +1,5 @@
+CLINICAL VALIDATION RESULTS
+========================================
+CYP2C9_Activity: 0.637
+VKORC1_Sensitivity: -0.607
+Age: -0.069
