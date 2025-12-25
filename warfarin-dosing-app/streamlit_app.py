@@ -1,17 +1,17 @@
-# app.py - Streamlit Warfarin Dosing App
+# streamlit_app.py - Warfarin Dosing with SHAP Fallback
 import warnings
 warnings.filterwarnings("ignore")
 
 import os
+import sys
 from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
-import shap
 from datetime import datetime
 
-# Set page config (MUST BE FIRST STREAMLIT COMMAND)
+# Set page config (MUST BE FIRST)
 st.set_page_config(
     page_title="Pharmacogenetic Warfarin Dosing",
     page_icon="💊",
@@ -20,7 +20,22 @@ st.set_page_config(
 )
 
 # ============================================================
-# CONSTANTS AND CONFIGURATION
+# SHAP IMPORT WITH GRACEFUL FALLBACK
+# ============================================================
+
+SHAP_AVAILABLE = False
+explainer = None
+
+try:
+    import shap
+    SHAP_AVAILABLE = True
+    st.success("✅ SHAP loaded successfully")
+except ImportError as e:
+    st.warning("⚠️ SHAP not available. Feature explanations disabled.")
+    st.info("Install with: `pip install shap`")
+
+# ============================================================
+# CONSTANTS
 # ============================================================
 
 DOSE_CATEGORIES = [
@@ -37,44 +52,62 @@ MODEL_METADATA = {
     "model_type": "XGBoost",
     "validation_RMSE": 1.15,
     "validation_MAE": 0.85,
-    "validation_R2": 0.75,
-    "last_loaded": datetime.now().strftime("%Y-%m-%d %H:%M")
+    "validation_R2": 0.75
 }
 
 # ============================================================
-# CACHED MODEL LOADING (PERFORMANCE OPTIMIZATION)
+# CACHED MODEL LOADING
 # ============================================================
 
 @st.cache_resource
 def load_models():
-    """Load and cache models for performance"""
+    """Load and cache models"""
     try:
         BASE_DIR = Path(__file__).parent
-    except NameError:
-        BASE_DIR = Path(os.getcwd())
-    
-    model_path = BASE_DIR / "final_warfarin_model_xgboost.pkl"
-    preprocessor_path = BASE_DIR / "preprocessor.pkl"
-    
-    if not model_path.exists():
-        st.error(f"❌ Model file not found at: {model_path}")
+        
+        model_path = BASE_DIR / "final_warfarin_model_xgboost.pkl"
+        preprocessor_path = BASE_DIR / "preprocessor.pkl"
+        
+        # Check if files exist
+        if not model_path.exists():
+            # Try to find with different patterns
+            pkl_files = list(BASE_DIR.glob("*.pkl"))
+            if pkl_files:
+                st.info(f"Found PKL files: {[f.name for f in pkl_files]}")
+            raise FileNotFoundError(f"Model file not found. Looking for: {model_path}")
+        
+        if not preprocessor_path.exists():
+            raise FileNotFoundError(f"Preprocessor not found: {preprocessor_path}")
+        
+        # Load models
+        model = joblib.load(model_path)
+        preprocessor = joblib.load(preprocessor_path)
+        
+        # Initialize SHAP explainer if available
+        if SHAP_AVAILABLE:
+            explainer = shap.TreeExplainer(model)
+        else:
+            explainer = None
+        
+        RAW_COLUMNS = list(preprocessor.feature_names_in_)
+        
+        return model, preprocessor, explainer, RAW_COLUMNS
+        
+    except Exception as e:
+        st.error(f"❌ Model loading error: {str(e)}")
         st.stop()
-    if not preprocessor_path.exists():
-        st.error(f"❌ Preprocessor file not found at: {preprocessor_path}")
-        st.stop()
-    
-    model = joblib.load(model_path)
-    preprocessor = joblib.load(preprocessor_path)
-    explainer = shap.TreeExplainer(model)
-    
-    return model, preprocessor, explainer
 
 # Load models
 try:
-    model, preprocessor, explainer = load_models()
-    RAW_COLUMNS = list(preprocessor.feature_names_in_)
+    model, preprocessor, explainer, RAW_COLUMNS = load_models()
 except Exception as e:
-    st.error(f"❌ Error loading models: {str(e)}")
+    st.error(f"❌ Failed to load models: {str(e)}")
+    st.info("Please ensure model files are in the same directory as this script.")
+    st.code("""
+    Required files:
+    - final_warfarin_model_xgboost.pkl
+    - preprocessor.pkl
+    """)
     st.stop()
 
 # ============================================================
@@ -101,6 +134,7 @@ VKORC1_PHENO = {"G/G": "Normal", "A/G": "Intermediate", "A/A": "Sensitive"}
 CYP4F2_SCORE = {"C/C": 0.0, "C/T": 1.0, "T/T": 2.0}
 CYP4F2_PHENO = {"C/C": "Normal", "C/T": "Heterozygous", "T/T": "Variant"}
 
+# User-friendly mappings
 CYP2C9_UI_TO_RAW = {
     "Very high metabolism": "*1/*1",
     "High metabolism": "*1/*2",
@@ -252,11 +286,17 @@ def make_prediction(inputs_dict):
     X = preprocessor.transform(df_raw)
     pred = float(model.predict(X)[0])
     
-    # Get SHAP values
-    shap_vals = explainer.shap_values(X)[0]
-    names = preprocessor.get_feature_names_out()
-    pairs = list(zip(names, shap_vals))
-    top3 = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:3]
+    # Get SHAP values if available
+    shap_top3 = []
+    if SHAP_AVAILABLE and explainer is not None:
+        try:
+            shap_vals = explainer.shap_values(X)[0]
+            names = preprocessor.get_feature_names_out()
+            pairs = list(zip(names, shap_vals))
+            top3 = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:3]
+            shap_top3 = [(feat, float(val)) for feat, val in top3]
+        except Exception as e:
+            st.warning(f"SHAP calculation failed: {str(e)}")
     
     return {
         "prediction": pred,
@@ -265,9 +305,10 @@ def make_prediction(inputs_dict):
         "bmi": bmi,
         "bsa": bsa,
         "burden": burden,
-        "shap_top3": top3,
+        "shap_top3": shap_top3,
         "interaction_score": interaction_score,
-        "comorb_score": comorb_score
+        "comorb_score": comorb_score,
+        "shap_available": SHAP_AVAILABLE and explainer is not None
     }
 
 # ============================================================
@@ -282,20 +323,30 @@ def main():
     **For educational and research purposes only**
     """)
     
-    # Sidebar for model info
+    # Sidebar
     with st.sidebar:
         st.header("ℹ️ Model Information")
         st.markdown(f"""
         **Version:** {MODEL_METADATA['version']}  
         **Type:** {MODEL_METADATA['model_type']}  
         **Trained:** {MODEL_METADATA['training_date']}  
-        **Loaded:** {MODEL_METADATA['last_loaded']}  
         
         **Validation Metrics:**  
         • RMSE: {MODEL_METADATA['validation_RMSE']} mg/day  
         • MAE: {MODEL_METADATA['validation_MAE']} mg/day  
         • R²: {MODEL_METADATA['validation_R2']}
         """)
+        
+        st.divider()
+        
+        # SHAP status
+        if not SHAP_AVAILABLE:
+            st.warning("⚠️ SHAP not installed")
+            st.code("pip install shap")
+        elif explainer is None:
+            st.warning("⚠️ SHAP explainer not available")
+        else:
+            st.success("✅ SHAP explanations enabled")
         
         st.divider()
         
@@ -310,27 +361,23 @@ def main():
         
         st.warning("""
         ⚠️ **Clinical Disclaimer**  
-        This tool is for educational and research purposes only.  
-        Not for clinical decision-making.  
-        Always consult healthcare professionals.
+        Educational/research use only.  
+        Not for clinical decision-making.
         """)
     
-    # Create input form
+    # Input form
     with st.form("warfarin_form"):
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("📊 Demographics")
-            age = st.slider("Age (years)", 18, 100, 65, help="Age range: 18-100 years")
-            weight = st.number_input("Weight (kg)", 30.0, 250.0, 70.0, step=0.1, 
-                                   help="Weight range: 30-250 kg")
-            height = st.number_input("Height (cm)", 100.0, 250.0, 170.0, step=0.1,
-                                   help="Height range: 100-250 cm")
+            age = st.slider("Age (years)", 18, 100, 65)
+            weight = st.number_input("Weight (kg)", 30.0, 250.0, 70.0, step=0.1)
+            height = st.number_input("Height (cm)", 100.0, 250.0, 170.0, step=0.1)
             sex = st.radio("Sex", ["M", "F"], horizontal=True)
             ethnicity = st.selectbox("Ethnicity", 
                 ["African American", "Asian", "Caucasian", "Hispanic", "Other"])
-            egfr = st.number_input("eGFR (ml/min/1.73m²)", 5.0, 200.0, 90.0, step=0.1,
-                                 help="Estimated Glomerular Filtration Rate")
+            egfr = st.number_input("eGFR (ml/min/1.73m²)", 5.0, 200.0, 90.0, step=0.1)
         
         with col2:
             st.subheader("🧬 Genetic Profile")
@@ -341,8 +388,8 @@ def main():
             st.subheader("💊 Medications")
             col2a, col2b = st.columns(2)
             with col2a:
-                amio = st.checkbox("Amiodarone", help="Strong CYP2C9 inhibitor")
-                abx = st.checkbox("Recent Antibiotics", help="May affect gut flora")
+                amio = st.checkbox("Amiodarone")
+                abx = st.checkbox("Recent Antibiotics")
             with col2b:
                 statin = st.checkbox("Statin Therapy")
                 aspirin = st.checkbox("Aspirin Use")
@@ -360,7 +407,7 @@ def main():
         submit_button = st.form_submit_button("🔬 Calculate Warfarin Dose", 
                                             type="primary", use_container_width=True)
     
-    # Process when submitted
+    # Process prediction
     if submit_button:
         # Validate inputs
         errors = validate_inputs(age, weight, height, egfr)
@@ -368,7 +415,7 @@ def main():
             st.error("**Validation Errors:**\n\n" + "\n".join(f"• {e}" for e in errors))
             return
         
-        # Show loading spinner
+        # Show loading
         with st.spinner("🤖 Calculating dose estimate..."):
             # Collect inputs
             inputs = {
@@ -397,7 +444,7 @@ def main():
             # Display results
             st.divider()
             
-            # Dose header with color
+            # Dose header
             dose_icon = result["icon"]
             dose_category = result["category"]
             dose_value = result["prediction"]
@@ -414,34 +461,37 @@ def main():
             
             st.divider()
             
-            # Results in columns
+            # Results columns
             col1, col2 = st.columns(2)
             
             with col1:
                 st.subheader("📈 Model Insights")
                 
-                # SHAP table
-                st.markdown("**Top Influencing Factors:**")
-                shap_data = []
-                for feat, val in result["shap_top3"]:
-                    direction = "Increases" if val > 0 else "Decreases"
-                    shap_data.append({
-                        "Factor": feat.replace("num__", "").replace("cat__", ""),
-                        "Impact": f"{val:.3f}",
-                        "Effect": f"{direction} dose"
-                    })
-                
-                st.table(pd.DataFrame(shap_data))
-                
-                # Risk scores
-                st.subheader("📊 Risk Profile")
-                score_col1, score_col2, score_col3 = st.columns(3)
-                with score_col1:
-                    st.metric("Genetic Burden", f"{result['burden']:.3f}")
-                with score_col2:
-                    st.metric("Interaction Score", result["interaction_score"])
-                with score_col3:
-                    st.metric("Comorbidity Score", result["comorb_score"])
+                # SHAP or feature importance
+                if result["shap_available"] and result["shap_top3"]:
+                    st.markdown("**Top Influencing Factors (SHAP):**")
+                    shap_data = []
+                    for feat, val in result["shap_top3"]:
+                        direction = "Increases" if val > 0 else "Decreases"
+                        shap_data.append({
+                            "Factor": feat.replace("num__", "").replace("cat__", ""),
+                            "Impact": f"{val:.3f}",
+                            "Effect": direction
+                        })
+                    st.table(pd.DataFrame(shap_data))
+                else:
+                    st.info("ℹ️ Feature explanations require SHAP library")
+                    st.code("Install: pip install shap")
+                    
+                    # Show calculated scores instead
+                    st.markdown("**Calculated Risk Scores:**")
+                    scores_col1, scores_col2, scores_col3 = st.columns(3)
+                    with scores_col1:
+                        st.metric("Genetic Burden", f"{result['burden']:.3f}")
+                    with scores_col2:
+                        st.metric("Interaction Score", result["interaction_score"])
+                    with scores_col3:
+                        st.metric("Comorbidity Score", result["comorb_score"])
                 
                 # Warnings
                 warnings_list = []
@@ -478,7 +528,7 @@ def main():
                 st.write(f"• **VKORC1:** {vkorc1}")
                 st.write(f"• **CYP4F2:** {cyp4f2}")
                 
-                # Conditions
+                # Conditions & Medications
                 st.markdown("**Conditions**")
                 cond_col1, cond_col2 = st.columns(2)
                 with cond_col1:
@@ -488,7 +538,6 @@ def main():
                     st.write(f"• **CKD:** {'✅' if ckd else '❌'}")
                     st.write(f"• **HF:** {'✅' if hf else '❌'}")
                 
-                # Medications
                 st.markdown("**Medications**")
                 med_col1, med_col2 = st.columns(2)
                 with med_col1:
@@ -504,34 +553,30 @@ def main():
             with st.expander("📚 Educational Information", expanded=False):
                 st.markdown("""
                 **About Warfarin Dosing:**
-                - Warfarin dose is adjusted to maintain INR within target range (typically 2.0-3.0)
-                - INR monitoring frequency: Weekly during initiation, then every 4 weeks when stable
-                - Dose adjustments should be based on INR trends, not single values
+                - Target INR range: 2.0-3.0 (2.5-3.5 for mechanical valves)
+                - Monitor INR weekly during initiation, then every 4 weeks when stable
+                - Adjust dose based on INR trends, not single values
                 
-                **Genetic Considerations:**
-                - CYP2C9 variants affect warfarin metabolism rate
-                - VKORC1 variants affect warfarin sensitivity
-                - CYP4F2 variants affect vitamin K availability
+                **Genetic Factors:**
+                - CYP2C9: Affects warfarin metabolism rate
+                - VKORC1: Affects warfarin sensitivity
+                - CYP4F2: Affects vitamin K availability
                 
-                **Important Notes:**
-                - This model provides estimates based on population data
+                **Important:**
+                - This is an educational tool only
                 - Individual responses may vary
-                - Always follow clinical guidelines and professional judgment
+                - Always follow clinical guidelines
                 """)
-            
-            # Export option
-            st.caption("💾 *Results can be saved using browser print/save function*")
     
     # Footer
     st.divider()
     st.caption("""
-    **Disclaimer:** This application is for educational and research purposes only. 
-    It is not intended for clinical decision-making. Always consult qualified healthcare 
-    professionals for medical advice. Model performance: RMSE = 1.15 mg/day, MAE = 0.85 mg/day.
+    **Disclaimer:** For educational/research purposes only. Not for clinical use. 
+    Model performance: RMSE = 1.15 mg/day, MAE = 0.85 mg/day.
     """)
 
 # ============================================================
-# ENTRY POINT
+# RUN APP
 # ============================================================
 
 if __name__ == "__main__":
