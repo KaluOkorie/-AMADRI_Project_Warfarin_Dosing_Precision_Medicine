@@ -52,13 +52,48 @@ The pipeline successfully consolidated and prepared a substantial dataset for an
 | Combined  | 50,000  | 27+      | All features merged with engineered additions    | Complete modeling dataset                |
 
 ## Clinical Validation
-
-The core modeling approach focused on creating clinically actionable predictions:
+The core modeling approach focused on creating clinically actionable predictions and its backed by relevant literature:
 
 ## Feature Engineering with Clinical Wisdom
-- Transformed genetic variants into functional activity scores (CYP2C9, VKORC1).
-- Calculated clinically relevant metrics including **BSA**, **eGFR**, and **genetic burden scores**.
-
+- CYP2C9 - The "Drug Metabolizer" Gene [Some people break down warfarin quickly (need more), some slowly (need less)]
+Raw genotype → Clinical meaning
+"*1/*1" = Fast metabolism (needs higher dose)
+"*1/*3" = Slow metabolism (needs lower dose)  
+"*3/*3" = Very slow metabolism (needs much lower dose)
+- VKORC1 - The "Drug Sensitivity" Gene [Some bodies are more sensitive to warfarin - even small doses can cause bleeding]
+Raw genotype → Warfarin sensitivity
+"G/G" = Normal sensitivity (standard dose)
+"A/G" = More sensitive (lower dose)
+"A/A" = Very sensitive (much lower dose)
+- CYP4F2 - The "Vitamin K Processor" Gene [This causes warfarin to work better, so they need slightly lower doses]
+"T/T" variant = Processes vitamin K slower
+- Body Wisdom Encoding [Body Mass Index (BMI) tells us about body composition] BMI = weight (kg) / (height (m))²
+Body Surface Area (BSA) - better predictor than weight alone
+BSA = √[height(cm) × weight(kg) / 3600]
+Warfarin spreads through body water, not fat. BSA gives better estimate of distribution space.
+Categories:
+Underweight (<18.5): Often need lower doses
+Normal (18.5-25): Standard doses  
+Overweight (25-30): May need slightly higher
+Obese (>30): Often need higher doses
+- eGFR - "Kidney Filtering Capacity [Kidneys help clear warfarin. Poor kidney function = drug stays longer = needs less.]
+Categories:
+Severe impairment (<30): Much lower doses
+Moderate (30-60): Lower doses  
+Mild (60-90): Slightly lower doses
+Normal (>90): Standard doses
+- Age Adjustment [Liver function declines with age, so drug processing slows.]
+Older patients (>75) → Lower doses automatically
+- Medication Interaction [Some medications boost warfarin's effects dramatically. Amiodarone alone can double warfarin levels!]
+Interaction Score = Amiodarone? + Antibiotics? + Statins? + Aspirin? each "yes" = +1 to score
+- Comorbidity Scoring [Multiple health conditions change how the body handles medications.]
+Comorbidity Score = Hypertension? + Diabetes? + Kidney Disease? + Heart Failure? each condition = +1 to score 
+- Combined Genetic Burden Score [Some patients have multiple genetic "reasons" to need lower doses. This combines them into one risk indicator.]
+CYP2C9_score = (2.0 - activity_score) / 2.0
+VKORC1_score = sensitivity_score / 2.0  
+CYP4F2_score = variant_score / 2.0
+Genetic Burden = (CYP2C9 + VKORC1 + CYP4F2) / 3
+Higher burden = More genetic reasons for lower doses
 ## Rigorous Model Evaluation
 Benchmarking against the established **IWPC clinical algorithm** showed strong improvements:
 
@@ -73,19 +108,18 @@ Benchmarking against the established **IWPC clinical algorithm** showed strong i
 - **VKORC1 sensitivity** and **CYP2C9 activity** emerged as top predictors.  
 - Results align with established pharmacological understanding, reinforcing trust in model outputs.
 
-## Deployment & Clinical Integration
-The project culminates in a functional Gradio prototype that demonstrates how this technology could integrate into clinical workflows. 
-The application provides:
-- Personalized dosing recommendations based on genetic and clinical profiles
-- Clinical context and safety guidance for each recommendation
-- Interpretable explanations of which factors most influenced the dose
-- Drug interaction flags for common concomitant medications
+## Deployment
+The model is deployed as a Streamlit application on Hugging Face, containerised with Docker and served via a Flask API. 
+It is grounded in decades of clinical warfarin research, translating raw patient data into clinically meaningful features. 
+This approach helps the model reason more like an experienced clinician, not just a statistical engine.
+👉 **Interact with the app:**  
+[Click here](https://huggingface.co/spaces/Kalu0147/Warfarin_Dosing_Precision_Medicine#prediction-results)
 
 ## Technical Environment
 - **Languages:** Python (Pandas, Scikit‑learn, XGBoost, TensorFlow)  
-- **MLOps:** MLflow for experiment tracking, Gradio for deployment  
-- **Key Libraries:** SHAP for explainability, Scikit‑learn for preprocessing and modeling  
-- **Methodology:** Structured 5‑day development cycle with emphasis on reproducibility  
+- **MLOps:** Dockerised Streamlit app on Hugging Face, served via Flask; MLflow for experiment tracking 
+- **Explainability & Prep:** SHAP for explainability, Scikit‑learn for preprocessing and modeling  
+- **Process:** Reproducible, structured 5-day development workflow 
 
 Let's Connect
 I'm passionate about building data science solutions that bridge technical excellence with real-world clinical impact.
