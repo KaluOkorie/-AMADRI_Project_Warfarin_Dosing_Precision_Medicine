@@ -60,13 +60,16 @@ Raw genotype → Clinical meaning
 "*1/*1" = Fast metabolism (needs higher dose)
 "*1/*3" = Slow metabolism (needs lower dose)  
 "*3/*3" = Very slow metabolism (needs much lower dose)
+
 - VKORC1 - The "Drug Sensitivity" Gene [Some bodies are more sensitive to warfarin - even small doses can cause bleeding]
 Raw genotype → Warfarin sensitivity
 "G/G" = Normal sensitivity (standard dose)
 "A/G" = More sensitive (lower dose)
 "A/A" = Very sensitive (much lower dose)
+
 - CYP4F2 - The "Vitamin K Processor" Gene [This causes warfarin to work better, so they need slightly lower doses]
 "T/T" variant = Processes vitamin K slower
+
 - Body Wisdom Encoding [Body Mass Index (BMI) tells us about body composition] BMI = weight (kg) / (height (m))²
 Body Surface Area (BSA) - better predictor than weight alone
 BSA = √[height(cm) × weight(kg) / 3600]
@@ -76,24 +79,28 @@ Underweight (<18.5): Often need lower doses
 Normal (18.5-25): Standard doses  
 Overweight (25-30): May need slightly higher
 Obese (>30): Often need higher doses
+
 - eGFR - "Kidney Filtering Capacity [Kidneys help clear warfarin. Poor kidney function = drug stays longer = needs less.]
 Categories:
 Severe impairment (<30): Much lower doses
 Moderate (30-60): Lower doses  
 Mild (60-90): Slightly lower doses
 Normal (>90): Standard doses
+
 - Age Adjustment [Liver function declines with age, so drug processing slows.]
 Older patients (>75) → Lower doses automatically
 - Medication Interaction [Some medications boost warfarin's effects dramatically. Amiodarone alone can double warfarin levels!]
 Interaction Score = Amiodarone? + Antibiotics? + Statins? + Aspirin? each "yes" = +1 to score
 - Comorbidity Scoring [Multiple health conditions change how the body handles medications.]
-Comorbidity Score = Hypertension? + Diabetes? + Kidney Disease? + Heart Failure? each condition = +1 to score 
+Comorbidity Score = Hypertension? + Diabetes? + Kidney Disease? + Heart Failure? each condition = +1 to score
+
 - Combined Genetic Burden Score [Some patients have multiple genetic "reasons" to need lower doses. This combines them into one risk indicator.]
 CYP2C9_score = (2.0 - activity_score) / 2.0
 VKORC1_score = sensitivity_score / 2.0  
 CYP4F2_score = variant_score / 2.0
 Genetic Burden = (CYP2C9 + VKORC1 + CYP4F2) / 3
 Higher burden = More genetic reasons for lower doses
+
 ## Rigorous Model Evaluation
 Benchmarking against the established **IWPC clinical algorithm** showed strong improvements:
 
